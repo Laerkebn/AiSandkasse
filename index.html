@@ -1,0 +1,136 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Teachable Machine -> p5.js sketch</title>
+
+  <!-- TensorFlow + Teachable Machine image library -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+
+  <!-- p5 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
+</head>
+<body>
+  <script>
+    // Teachable Machine model URL (same as your original)
+    const URL = "https://teachablemachine.withgoogle.com/models/wipPcFlXJu/";
+
+    let model, maxPredictions;
+    let video;
+    let isPredicting = false;
+    let lastPredictionTime = 0;
+    const PREDICT_INTERVAL = 200; // ms between predictions
+    let latestPredictions = []; // store last results
+
+    async function initModel() {
+      const modelURL = URL + "model.json";
+      const metadataURL = URL + "metadata.json";
+      model = await tmImage.load(modelURL, metadataURL);
+      maxPredictions = model.getTotalClasses();
+      console.log("Model loaded. Classes:", maxPredictions);
+    }
+
+    function setup() {
+      createCanvas(320, 240);
+      // create and hide the native video element (we draw it to the p5 canvas)
+      video = createCapture(VIDEO);
+      video.size(width, height);
+      video.hide();
+
+      // start loading the teachable machine model
+      initModel().catch(err => console.error("Model load error:", err));
+
+      textFont('monospace');
+      textSize(12);
+      fill(255);
+      stroke(0);
+      strokeWeight(2);
+    }
+
+    async function predict() {
+      if (!model || isPredicting) return;
+      isPredicting = true;
+      try {
+        // tmImage accepts HTMLVideoElement; p5's video.elt is that element
+        const predictions = await model.predict(video.elt);
+        latestPredictions = predictions; // store for drawing and console
+        // log full array to console
+        console.log("predictions:", predictions);
+        if (predictions && predictions[0]) {
+          console.log("top:", predictions[0].className, predictions[0].probability);
+        }
+      } catch (e) {
+        console.error("prediction error:", e);
+      } finally {
+        lastPredictionTime = millis();
+        isPredicting = false;
+      }
+    }
+
+    function draw() {
+      background(30);
+
+      // mirror the video so it feels like a webcam selfie
+      push();
+      translate(width, 0);
+      scale(-1, 1);
+
+      // draw the video to the canvas (no tint now)
+      image(video, 0, 0, width, height);
+      pop();
+
+      // indicator square: top-right corner
+      const sqSize = 48;
+      const margin = 10;
+      let r = 160, g = 160, b = 160; // default neutral gray
+
+      // determine color based on top prediction probability (not label)
+      if (latestPredictions && latestPredictions[0] && typeof latestPredictions[0].probability === 'number') {
+        const topProb = latestPredictions[0].probability;
+        if (topProb > 0.9) {
+          // red when confidence over 0.9
+          r = 220; g = 60; b = 60;
+        } else {
+          // blue when there is a prediction but confidence not over threshold
+          r = 80; g = 140; b = 220;
+        }
+      }
+
+      noStroke();
+      fill(r, g, b, 220);
+      // canvas is in normal orientation here, draw square at top-right
+      rect(width - sqSize - margin, margin, sqSize, sqSize, 6);
+
+      // overlay semi-transparent panel for text
+      noStroke();
+      fill(0, 0, 0, 140);
+      rect(0, height - 80, width, 80);
+
+      // draw label text lines
+      fill(255);
+      stroke(0);
+      strokeWeight(2);
+      const pad = 6;
+      const startY = height - 80 + pad + 12;
+      if (!model) {
+        text("Loading model...", pad, startY);
+      } else if (!latestPredictions || latestPredictions.length === 0) {
+        text("Waiting for predictions...", pad, startY);
+      } else {
+        for (let i = 0; i < latestPredictions.length && i < 4; i++) {
+          const p = latestPredictions[i];
+          const label = p.className;
+          const prob = (p.probability * 100).toFixed(1) + "%";
+          text(`${label}: ${prob}`, pad, startY + i * 16);
+        }
+      }
+
+      // trigger predict at interval (non-blocking)
+      if (model && millis() - lastPredictionTime > PREDICT_INTERVAL && !isPredicting) {
+        predict();
+      }
+    }
+  </script>
+</body>
+</html>
