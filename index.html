@@ -54,6 +54,10 @@
       try {
         // tmImage accepts HTMLVideoElement; p5's video.elt is that element
         const predictions = await model.predict(video.elt);
+        
+        // SORTÉR HER - kun når vi får nye predictions!
+        predictions.sort((a, b) => b.probability - a.probability);
+        
         latestPredictions = predictions; // store for drawing and console
         // log full array to console
         console.log("predictions:", predictions);
@@ -86,14 +90,22 @@
       let r = 160, g = 160, b = 160; // default neutral gray
 
       // determine color based on top prediction probability (not label)
-      if (latestPredictions && latestPredictions[0] && typeof latestPredictions[0].probability === 'number') {
-        const topProb = latestPredictions[0].probability;
-        if (topProb > 0.9) {
-          // red when confidence over 0.9
-          r = 220; g = 60; b = 60;
-        } else {
-          // blue when there is a prediction but confidence not over threshold
-          r = 80; g = 140; b = 220;
+      if (latestPredictions && latestPredictions.length > 0) {
+        // FJERNET SORTERING HER - den er allerede sorteret!
+        const top = latestPredictions[0];
+        const name = top.className.trim().toLowerCase();
+
+        if (name === "rød") {
+          r = 255; g = 0; b = 0;
+        } else if (name === "gul") {
+          r = 255; g = 220; b = 0;
+        } else if (name === "blå") {
+          r = 0; g = 100; b = 255;
+        } else if (name.includes("andre")) {
+          // regnbueeffekt
+          r = sin(frameCount * 0.05) * 127 + 128;
+          g = sin(frameCount * 0.05 + TWO_PI / 3) * 127 + 128;
+          b = sin(frameCount * 0.05 + (2 * TWO_PI) / 3) * 127 + 128;
         }
       }
 
@@ -113,6 +125,7 @@
       strokeWeight(2);
       const pad = 6;
       const startY = height - 80 + pad + 12;
+
       if (!model) {
         text("Loading model...", pad, startY);
       } else if (!latestPredictions || latestPredictions.length === 0) {
